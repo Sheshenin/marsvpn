@@ -34,6 +34,10 @@ jobs:
             # Ensure iptables FORWARD chain allows Docker traffic
             iptables -P FORWARD ACCEPT 2>/dev/null || true
 
+            # NAT for Docker container outbound traffic (required for bridge mode)
+            iptables -t nat -C POSTROUTING -s 172.17.0.0/16 ! -o docker0 -j MASQUERADE 2>/dev/null \
+              || iptables -t nat -A POSTROUTING -s 172.17.0.0/16 ! -o docker0 -j MASQUERADE 2>/dev/null || true
+
             git clone -b "$BRANCH" "$REPO_URL" "$REPO_DIR"
             cd "$REPO_DIR"
             docker compose up -d --build
