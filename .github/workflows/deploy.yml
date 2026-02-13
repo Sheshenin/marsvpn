@@ -36,20 +36,16 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
-            REPO_DIR="$HOME/projects/marsvpn"
+            REPO_DIR="$HOME/app/marsvpn"
             REPO_URL="https://${{ secrets.GH_PAT }}@github.com/Sheshenin/marsvpn.git"
             BRANCH="claude/setup-cicd-autodeploy-A79xr"
 
-            mkdir -p "$HOME/projects"
+            mkdir -p "$HOME/app"
 
-            if [ ! -d "$REPO_DIR/.git" ]; then
-              git clone -b "$BRANCH" "$REPO_URL" "$REPO_DIR"
-            else
-              git config --global --add safe.directory "$REPO_DIR"
-              cd "$REPO_DIR"
-              git fetch "$REPO_URL" "$BRANCH"
-              git reset --hard FETCH_HEAD
+            if [ -d "$REPO_DIR" ]; then
+              rm -rf "$REPO_DIR"
             fi
 
+            git clone -b "$BRANCH" "$REPO_URL" "$REPO_DIR"
             cd "$REPO_DIR"
             docker compose up -d --build
