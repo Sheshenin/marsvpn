@@ -31,3 +31,21 @@ jobs:
             git clone -b "$BRANCH" "$REPO_URL" "$REPO_DIR"
             cd "$REPO_DIR"
             docker compose up -d --build
+
+            # Diagnostics: understand why outbound TCP from container fails
+            echo "=== DIAGNOSTICS ==="
+            echo "--- whoami ---"
+            whoami
+            echo "--- ip_forward ---"
+            cat /proc/sys/net/ipv4/ip_forward
+            echo "--- iptables nat ---"
+            iptables -t nat -L -n 2>&1 || echo "iptables: permission denied"
+            echo "--- iptables filter FORWARD ---"
+            iptables -L FORWARD -n 2>&1 || echo "iptables: permission denied"
+            echo "--- docker network ---"
+            docker network inspect bridge 2>&1 | head -30
+            echo "--- container test: curl google ---"
+            docker compose exec -T shadowsocks sh -c "curl -s --connect-timeout 5 http://google.com" 2>&1 || echo "curl failed"
+            echo "--- container test: nslookup ---"
+            docker compose exec -T shadowsocks sh -c "nslookup google.com 8.8.8.8" 2>&1 || echo "nslookup failed"
+            echo "=== END DIAGNOSTICS ==="
