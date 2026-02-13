@@ -18,6 +18,7 @@
         .container {
             text-align: center;
             padding: 2rem;
+            max-width: 480px;
         }
         h1 {
             font-size: 3rem;
@@ -43,6 +44,34 @@
             border-radius: 50%;
             margin-right: 8px;
         }
+        .config {
+            margin-top: 1.5rem;
+            padding: 1.5rem;
+            background: #1a1a2e;
+            border-radius: 8px;
+            border: 1px solid #333;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+        .config h3 {
+            color: #ff6b35;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        .config-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.4rem 0;
+            border-bottom: 1px solid #222;
+        }
+        .config-row:last-child { border-bottom: none; }
+        .label { color: #888; }
+        .value { color: #e0e0e0; font-family: monospace; }
+        .note {
+            margin-top: 1.5rem;
+            font-size: 0.8rem;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -52,6 +81,30 @@
         <div class="status">
             <span class="dot"></span> Server is running
         </div>
+        <div class="config">
+            <h3>Shadowrocket Config</h3>
+            <div class="config-row">
+                <span class="label">Type</span>
+                <span class="value">Shadowsocks</span>
+            </div>
+            <div class="config-row">
+                <span class="label">Address</span>
+                <span class="value">&lt;SERVER_IP&gt;</span>
+            </div>
+            <div class="config-row">
+                <span class="label">Port</span>
+                <span class="value">8388</span>
+            </div>
+            <div class="config-row">
+                <span class="label">Encryption</span>
+                <span class="value">aes-256-gcm</span>
+            </div>
+            <div class="config-row">
+                <span class="label">Password</span>
+                <span class="value">see config</span>
+            </div>
+        </div>
+        <p class="note">Shadowrocket &rarr; Add Server &rarr; Shadowsocks</p>
     </div>
 </body>
 </html>
