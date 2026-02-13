@@ -17,6 +17,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script_stop: true
           script: |
-            cd /home/deploy/projects/marsvpn && git pull https://${{ secrets.GH_PAT }}@github.com/Sheshenin/marsvpn.git claude/setup-cicd-autodeploy-A79xr && docker compose up -d --build
+            cd /home/deploy/projects/marsvpn
+            git pull https://${{ secrets.GH_PAT }}@github.com/Sheshenin/marsvpn.git claude/setup-cicd-autodeploy-A79xr
+            docker compose up -d --build
