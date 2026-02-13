@@ -4,6 +4,7 @@
     "password": "Ny7FwVmp7RmXqiahAG0xk/9X7BWlNa37",
     "method": "aes-256-gcm",
     "mode": "tcp_and_udp",
-    "fast_open": true,
-    "no_delay": true
+    "no_delay": true,
+    "dns": "google",
+    "ipv6_first": false
 }
