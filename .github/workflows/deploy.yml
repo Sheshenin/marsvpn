@@ -35,8 +35,21 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            sudo chown -R deploy:deploy /home/deploy/projects/marsvpn
-            git config --global --add safe.directory /home/deploy/projects/marsvpn
-            cd /home/deploy/projects/marsvpn
-            git pull https://${{ secrets.GH_PAT }}@github.com/Sheshenin/marsvpn.git claude/setup-cicd-autodeploy-A79xr
-            docker compose -f docker-compose.yml up -d --build
+            set -e
+            REPO_DIR="$HOME/projects/marsvpn"
+            REPO_URL="https://${{ secrets.GH_PAT }}@github.com/Sheshenin/marsvpn.git"
+            BRANCH="claude/setup-cicd-autodeploy-A79xr"
+
+            mkdir -p "$HOME/projects"
+
+            if [ ! -d "$REPO_DIR/.git" ]; then
+              git clone -b "$BRANCH" "$REPO_URL" "$REPO_DIR"
+            else
+              git config --global --add safe.directory "$REPO_DIR"
+              cd "$REPO_DIR"
+              git fetch "$REPO_URL" "$BRANCH"
+              git reset --hard FETCH_HEAD
+            fi
+
+            cd "$REPO_DIR"
+            docker compose up -d --build
