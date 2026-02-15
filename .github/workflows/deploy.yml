@@ -26,7 +26,12 @@ jobs:
             mkdir -p "$HOME/app"
 
             if [ -d "$REPO_DIR" ]; then
-              sudo rm -rf "$REPO_DIR"
+              cd "$REPO_DIR"
+              docker compose down --volumes 2>/dev/null || true
+              # Remove docker-owned files via a container
+              docker run --rm -v "$REPO_DIR":/workspace alpine rm -rf /workspace/.git /workspace/.claude 2>/dev/null || true
+              cd "$HOME"
+              rm -rf "$REPO_DIR"
             fi
 
             git clone -b "$BRANCH" "$REPO_URL" "$REPO_DIR"
