@@ -12,16 +12,18 @@ jobs:
 
     steps:
       - name: Deploy via SSH
+        env:
+          BRANCH: ${{ github.ref_name }}
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: BRANCH
           script: |
             set -e
             REPO_DIR="$HOME/app/marsvpn"
             REPO_URL="https://${{ secrets.GH_PAT }}@github.com/Sheshenin/marsvpn.git"
-            BRANCH="${GITHUB_REF_NAME}"
 
             mkdir -p "$HOME/app"
 
