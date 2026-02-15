@@ -1,14 +1,18 @@
-"""Task management API server."""
+"""Task management API server with MCP support."""
 
+import json
 import os
+import uuid
 from datetime import datetime
 from functools import wraps
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from tasks import db
+from tasks.mcp_server import TOOLS, call_tool
 
 API_TOKEN = os.environ.get("TASKS_API_TOKEN", "")
 
@@ -169,3 +173,64 @@ def daily_overview(authorization: str = Header(None)):
         "active": db.list_tasks(status="active"),
         "waiting": db.list_tasks(status="waiting"),
     }
+
+
+# ── MCP over Streamable HTTP ─────────────────────────────
+# Claude AI connects to POST /mcp as an MCP Streamable HTTP endpoint.
+
+def mcp_handle(method: str, req_id, params: dict) -> dict:
+    """Handle a single MCP JSON-RPC request."""
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "task-manager", "version": "1.0.0"},
+            },
+        }
+    elif method == "tools/list":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": TOOLS}}
+    elif method == "tools/call":
+        name = params.get("name", "")
+        args = params.get("arguments", {})
+        try:
+            result_text = call_tool(name, args)
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {"content": [{"type": "text", "text": result_text}]},
+            }
+        except Exception as e:
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {"content": [{"type": "text", "text": f"Error: {e}"}], "isError": True},
+            }
+    elif method == "notifications/initialized":
+        return None  # notification, no response
+    else:
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {"code": -32601, "message": f"Method not found: {method}"},
+        }
+
+
+@app.post("/mcp")
+async def mcp_endpoint(request: Request, authorization: str = Header(None)):
+    """MCP Streamable HTTP endpoint for Claude AI integration."""
+    verify_token(authorization)
+    body = await request.json()
+
+    method = body.get("method", "")
+    req_id = body.get("id")
+    params = body.get("params", {})
+
+    response = mcp_handle(method, req_id, params)
+
+    if response is None:
+        return {"jsonrpc": "2.0", "id": req_id, "result": {}}
+
+    return response
