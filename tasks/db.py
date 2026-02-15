@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "tasks.db"
+DB_PATH = Path(os.environ.get("TASKS_DB_PATH", str(Path(__file__).parent / "tasks.db")))
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
@@ -131,6 +131,15 @@ def update_task(task_id: int, **fields) -> bool:
     changed = cur.rowcount > 0
     conn.close()
     return changed
+
+
+def inbox_add(text: str) -> int:
+    """Quick-add to inbox — no categorization, just raw text."""
+    return add_task(title=text, status="inbox")
+
+
+def list_inbox() -> list[dict]:
+    return list_tasks(status="inbox")
 
 
 def complete_task(task_id: int) -> bool:

@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     title TEXT NOT NULL,
     details TEXT,
     project_id INTEGER,
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'waiting', 'done', 'cancelled')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('inbox', 'active', 'waiting', 'done', 'cancelled')),
     deadline TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),

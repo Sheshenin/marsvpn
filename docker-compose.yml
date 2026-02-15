@@ -12,6 +12,27 @@ services:
       - "traefik.http.routers.marsvpn.tls.certresolver=le"
       - "traefik.http.services.marsvpn.loadbalancer.server.port=80"
 
+  tasks-api:
+    build: ./tasks
+    restart: unless-stopped
+    volumes:
+      - tasks-data:/app/data
+    environment:
+      - TASKS_API_TOKEN=${TASKS_API_TOKEN:-}
+      - TASKS_DB_PATH=/app/data/tasks.db
+    networks:
+      - proxy_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tasks.rule=Host(`tasks.sheshenin.com`)"
+      - "traefik.http.routers.tasks.entrypoints=websecure"
+      - "traefik.http.routers.tasks.tls=true"
+      - "traefik.http.routers.tasks.tls.certresolver=le"
+      - "traefik.http.services.tasks.loadbalancer.server.port=8000"
+
+volumes:
+  tasks-data:
+
 networks:
   proxy_default:
     external: true
