@@ -1,0 +1,12 @@
+{
+  "skills": {
+    "tasks": {
+      "path": ".claude/skills/tasks.md",
+      "description": "Manage personal task list (add, list, update, complete, delete tasks and projects)"
+    },
+    "daily-overview": {
+      "path": ".claude/skills/daily-overview.md",
+      "description": "Morning briefing: check tasks, email, and calendar, then present a daily overview"
+    }
+  }
+}
