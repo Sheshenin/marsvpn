@@ -26,7 +26,7 @@ jobs:
             mkdir -p "$HOME/app"
 
             if [ -d "$REPO_DIR" ]; then
-              rm -rf "$REPO_DIR"
+              sudo rm -rf "$REPO_DIR"
             fi
 
             git clone -b "$BRANCH" "$REPO_URL" "$REPO_DIR"
