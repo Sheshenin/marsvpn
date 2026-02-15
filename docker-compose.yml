@@ -1,6 +1,17 @@
 services:
   app:
     build: .
-    ports:
-      - "8080:80"
     restart: unless-stopped
+    networks:
+      - proxy_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.marsvpn.rule=Host(`cdn.sheshenin.com`)"
+      - "traefik.http.routers.marsvpn.entrypoints=websecure"
+      - "traefik.http.routers.marsvpn.tls=true"
+      - "traefik.http.routers.marsvpn.tls.certresolver=le"
+      - "traefik.http.services.marsvpn.loadbalancer.server.port=80"
+
+networks:
+  proxy_default:
+    external: true
