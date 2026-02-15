@@ -3,7 +3,8 @@ name: Deploy to VPS
 on:
   push:
     branches:
-      - claude/setup-cicd-autodeploy-A79xr
+      - main
+      - claude/task-database-schema-uYF63
 
 jobs:
   deploy:
@@ -20,7 +21,7 @@ jobs:
             set -e
             REPO_DIR="$HOME/app/marsvpn"
             REPO_URL="https://${{ secrets.GH_PAT }}@github.com/Sheshenin/marsvpn.git"
-            BRANCH="claude/setup-cicd-autodeploy-A79xr"
+            BRANCH="${GITHUB_REF_NAME}"
 
             mkdir -p "$HOME/app"
 
