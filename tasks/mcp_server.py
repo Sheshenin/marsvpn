@@ -9,6 +9,7 @@ import sys
 from datetime import datetime
 
 from tasks import db
+from tasks import calendar as cal
 
 
 def send_response(response: dict):
@@ -154,7 +155,51 @@ TOOLS = [
     },
     {
         "name": "daily_overview",
-        "description": "Get a full daily overview: summary, overdue tasks, due today, inbox, active and waiting tasks.",
+        "description": "Get a full daily overview: summary, overdue tasks, due today, inbox, active and waiting tasks, plus today's calendar events.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "add_calendar",
+        "description": "Add an iCal calendar by name and URL.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Calendar name (e.g. 'Work', 'Personal')"},
+                "url": {"type": "string", "description": "iCal URL (.ics)"},
+            },
+            "required": ["name", "url"],
+        },
+    },
+    {
+        "name": "list_calendars",
+        "description": "List all configured iCal calendars.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "delete_calendar",
+        "description": "Delete a calendar by ID.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "calendar_id": {"type": "integer", "description": "Calendar ID to delete"},
+            },
+            "required": ["calendar_id"],
+        },
+    },
+    {
+        "name": "get_calendar_events",
+        "description": "Get events from all calendars within a date range (default: 7 days back, 7 days forward).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "days_back": {"type": "integer", "description": "Days in the past (default: 7)"},
+                "days_forward": {"type": "integer", "description": "Days in the future (default: 7)"},
+            },
+        },
+    },
+    {
+        "name": "get_today_events",
+        "description": "Get calendar events for today and tomorrow from all calendars.",
         "inputSchema": {"type": "object", "properties": {}},
     },
 ]
@@ -166,6 +211,22 @@ def handle_tools_list(req_id, params):
         "id": req_id,
         "result": {"tools": TOOLS},
     }
+
+
+def _fetch_all_calendar_events(days_back: int = 7, days_forward: int = 7) -> list[dict]:
+    """Fetch events from all configured calendars."""
+    calendars = db.list_calendars()
+    all_events = []
+    for c in calendars:
+        try:
+            events = cal.get_events(c["url"], days_back=days_back, days_forward=days_forward)
+            for e in events:
+                e["calendar"] = c["name"]
+            all_events.extend(events)
+        except Exception as exc:
+            all_events.append({"calendar": c["name"], "error": str(exc)})
+    all_events.sort(key=lambda e: e.get("start") or "")
+    return all_events
 
 
 def call_tool(name: str, args: dict) -> str:
@@ -237,6 +298,7 @@ def call_tool(name: str, args: dict) -> str:
         return f"Created project #{pid}: {args['name']}"
 
     elif name == "daily_overview":
+        calendar_events = _fetch_all_calendar_events(days_back=0, days_forward=1)
         overview = {
             "date": datetime.now().strftime("%Y-%m-%d"),
             "summary": db.task_summary(),
@@ -245,8 +307,38 @@ def call_tool(name: str, args: dict) -> str:
             "inbox": db.list_inbox(),
             "active": db.list_tasks(status="active"),
             "waiting": db.list_tasks(status="waiting"),
+            "calendar_events": calendar_events,
         }
         return json.dumps(overview, indent=2, default=str)
+
+    elif name == "add_calendar":
+        cid = db.add_calendar(args["name"], args["url"])
+        return f"Added calendar #{cid}: {args['name']}"
+
+    elif name == "list_calendars":
+        calendars = db.list_calendars()
+        if not calendars:
+            return "No calendars configured."
+        lines = [f"[{c['id']}] {c['name']}: {c['url']}" for c in calendars]
+        return "\n".join(lines)
+
+    elif name == "delete_calendar":
+        db.delete_calendar(args["calendar_id"])
+        return f"Calendar #{args['calendar_id']} deleted."
+
+    elif name == "get_calendar_events":
+        days_back = args.get("days_back", 7)
+        days_forward = args.get("days_forward", 7)
+        events = _fetch_all_calendar_events(days_back, days_forward)
+        if not events:
+            return "No calendar events in this range."
+        return json.dumps(events, indent=2, default=str)
+
+    elif name == "get_today_events":
+        events = _fetch_all_calendar_events(days_back=0, days_forward=1)
+        if not events:
+            return "No events for today/tomorrow."
+        return json.dumps(events, indent=2, default=str)
 
     return f"Unknown tool: {name}"
 

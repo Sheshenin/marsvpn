@@ -6,15 +6,60 @@ import uuid
 from datetime import datetime
 from functools import wraps
 
+from pathlib import Path
+
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from tasks import db
+from tasks import calendar as cal
 from tasks.mcp_server import TOOLS, call_tool
 
 API_TOKEN = os.environ.get("TASKS_API_TOKEN", "")
+
+# ── Cache ────────────────────────────────────────────────
+_cache: dict | None = None
+
+
+def build_cache() -> dict:
+    """Build a single JSON with all data the frontend needs."""
+    global _cache
+    calendars = db.list_calendars()
+    calendar_events = []
+    for c in calendars:
+        try:
+            events = cal.get_events(c["url"], days_back=0, days_forward=3)
+            for e in events:
+                e["calendar"] = c["name"]
+            calendar_events.extend(events)
+        except Exception:
+            pass
+    calendar_events.sort(key=lambda e: e.get("start") or "")
+
+    _cache = {
+        "projects": db.list_projects(),
+        "tasks": db.list_tasks(include_done=True),
+        "overdue": db.overdue_tasks(),
+        "due_today": db.tasks_due_today(),
+        "calendar_events": calendar_events,
+    }
+    return _cache
+
+
+def get_cache() -> dict:
+    global _cache
+    if _cache is None:
+        return build_cache()
+    return _cache
+
+
+def invalidate_cache():
+    global _cache
+    _cache = None
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="Task Manager", version="1.0.0")
 
@@ -24,6 +69,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def backup_on_mutation(request: Request, call_next):
+    response = await call_next(request)
+    if request.method in ("POST", "PATCH", "DELETE") and response.status_code < 400:
+        invalidate_cache()
+        try:
+            db.backup_db()
+        except Exception:
+            pass
+    return response
+
+
+# ── Web UI ────────────────────────────────────────────────
+
+@app.get("/", response_class=HTMLResponse)
+def web_ui():
+    html = (STATIC_DIR / "index.html").read_text()
+    return html.replace("__API_TOKEN__", API_TOKEN)
+
+
+@app.get("/api/cache")
+def api_cache(authorization: str = Header(None)):
+    verify_token(authorization)
+    return get_cache()
 
 
 # ── Auth ──────────────────────────────────────────────────
@@ -57,6 +128,10 @@ class InboxItem(BaseModel):
 class ProjectCreate(BaseModel):
     name: str
     description: str | None = None
+
+class CalendarCreate(BaseModel):
+    name: str
+    url: str
 
 
 # ── Inbox (quick capture) ────────────────────────────────
@@ -159,11 +234,65 @@ def delete_project(project_id: int, authorization: str = Header(None)):
     return {"deleted": project_id}
 
 
+# ── Calendars ─────────────────────────────────────────────
+
+@app.get("/calendars")
+def get_calendars(authorization: str = Header(None)):
+    verify_token(authorization)
+    return db.list_calendars()
+
+
+@app.post("/calendars")
+def create_calendar(calendar: CalendarCreate, authorization: str = Header(None)):
+    verify_token(authorization)
+    cid = db.add_calendar(calendar.name, calendar.url)
+    return {"id": cid, "name": calendar.name}
+
+
+@app.delete("/calendars/{calendar_id}")
+def remove_calendar(calendar_id: int, authorization: str = Header(None)):
+    verify_token(authorization)
+    db.delete_calendar(calendar_id)
+    return {"deleted": calendar_id}
+
+
+@app.get("/calendar/events")
+def calendar_events(
+    days_back: int = 7,
+    days_forward: int = 7,
+    authorization: str = Header(None),
+):
+    verify_token(authorization)
+    calendars = db.list_calendars()
+    all_events = []
+    for c in calendars:
+        try:
+            events = cal.get_events(c["url"], days_back=days_back, days_forward=days_forward)
+            for e in events:
+                e["calendar"] = c["name"]
+            all_events.extend(events)
+        except Exception as exc:
+            all_events.append({"calendar": c["name"], "error": str(exc)})
+    all_events.sort(key=lambda e: e.get("start") or "")
+    return all_events
+
+
 # ── Overview ──────────────────────────────────────────────
 
 @app.get("/overview")
 def daily_overview(authorization: str = Header(None)):
     verify_token(authorization)
+    calendars = db.list_calendars()
+    calendar_events = []
+    for c in calendars:
+        try:
+            events = cal.get_today_tomorrow_events(c["url"])
+            for e in events:
+                e["calendar"] = c["name"]
+            calendar_events.extend(events)
+        except Exception:
+            pass
+    calendar_events.sort(key=lambda e: e.get("start") or "")
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),
         "summary": db.task_summary(),
@@ -172,6 +301,7 @@ def daily_overview(authorization: str = Header(None)):
         "inbox": db.list_inbox(),
         "active": db.list_tasks(status="active"),
         "waiting": db.list_tasks(status="waiting"),
+        "calendar_events": calendar_events,
     }
 
 
@@ -219,9 +349,8 @@ def mcp_handle(method: str, req_id, params: dict) -> dict:
 
 
 @app.post("/mcp")
-async def mcp_endpoint(request: Request, authorization: str = Header(None)):
-    """MCP Streamable HTTP endpoint for Claude AI integration."""
-    verify_token(authorization)
+async def mcp_endpoint(request: Request):
+    """MCP Streamable HTTP endpoint for Claude AI integration (no auth — public)."""
     body = await request.json()
 
     method = body.get("method", "")

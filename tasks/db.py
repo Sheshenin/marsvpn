@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 DB_PATH = Path(os.environ.get("TASKS_DB_PATH", str(Path(__file__).parent / "tasks.db")))
+BACKUP_DIR = DB_PATH.parent / "backups"
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
@@ -22,6 +23,25 @@ def init_db():
     with open(SCHEMA_PATH) as f:
         conn.executescript(f.read())
     conn.close()
+
+
+# ── Backup ────────────────────────────────────────────────
+
+def backup_db():
+    """Create a timestamped backup using SQLite online backup API. Remove backups older than 10 days."""
+    BACKUP_DIR.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = BACKUP_DIR / f"tasks_{ts}.db"
+    src = sqlite3.connect(str(DB_PATH))
+    dst = sqlite3.connect(str(dest))
+    src.backup(dst)
+    dst.close()
+    src.close()
+    # Cleanup old backups
+    cutoff = datetime.now().timestamp() - 10 * 86400
+    for f in BACKUP_DIR.glob("tasks_*.db"):
+        if f.stat().st_mtime < cutoff:
+            f.unlink()
 
 
 # ── Projects ──────────────────────────────────────────────
@@ -193,6 +213,42 @@ def task_summary() -> dict:
     return {r["status"]: r["cnt"] for r in rows}
 
 
-# Auto-init on first import
-if not DB_PATH.exists():
-    init_db()
+# ── Calendars ─────────────────────────────────────────────
+
+def add_calendar(name: str, url: str) -> int:
+    conn = get_connection()
+    cur = conn.execute(
+        "INSERT INTO calendars (name, url) VALUES (?, ?)",
+        (name, url),
+    )
+    conn.commit()
+    cid = cur.lastrowid
+    conn.close()
+    return cid
+
+
+def list_calendars() -> list[dict]:
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM calendars ORDER BY name").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_calendar(calendar_id: int) -> dict | None:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM calendars WHERE id = ?", (calendar_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def delete_calendar(calendar_id: int):
+    conn = get_connection()
+    conn.execute("DELETE FROM calendars WHERE id = ?", (calendar_id,))
+    conn.commit()
+    conn.close()
+
+
+# Auto-init on import (CREATE IF NOT EXISTS is safe to re-run)
+init_db()

@@ -24,3 +24,10 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
+
+CREATE TABLE IF NOT EXISTS calendars (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

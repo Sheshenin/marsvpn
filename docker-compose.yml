@@ -13,7 +13,9 @@ services:
       - "traefik.http.services.marsvpn.loadbalancer.server.port=80"
 
   tasks-api:
-    build: ./tasks
+    build:
+      context: .
+      dockerfile: tasks/Dockerfile
     restart: unless-stopped
     volumes:
       - tasks-data:/app/data

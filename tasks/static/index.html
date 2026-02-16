@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tasks</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text2: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --red: #f85149;
+  --orange: #d29922;
+  --purple: #bc8cff;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  padding: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+h2 { font-size: 16px; color: var(--text2); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+.section { margin-bottom: 24px; }
+
+/* Calendar */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.cal-day {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  min-height: 70px;
+  font-size: 12px;
+}
+.cal-day.today { border-color: var(--accent); }
+.cal-day-header { font-weight: 600; margin-bottom: 4px; color: var(--text2); font-size: 12px; }
+.cal-day.today .cal-day-header { color: var(--accent); }
+.cal-event {
+  background: #1f3a5f;
+  border-radius: 3px;
+  padding: 2px 6px;
+  margin-bottom: 2px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+.cal-event[data-cal="1"] { background: #2d1f4e; }
+
+/* Task list */
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.task-row:hover { border-color: var(--accent); }
+.task-row.done { opacity: 0.5; }
+.task-row.done .task-title { text-decoration: line-through; }
+
+.task-check {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.task-check:hover { border-color: var(--green); background: rgba(63,185,80,0.1); }
+.task-check.checked { background: var(--green); border-color: var(--green); }
+.task-check.checked::after { content: '\2713'; color: #fff; font-size: 14px; font-weight: 700; }
+
+.task-title { flex: 1; font-size: 14px; }
+.task-deadline { font-size: 12px; color: var(--text2); flex-shrink: 0; }
+.task-deadline.overdue { color: var(--red); }
+.task-deadline.today { color: var(--orange); }
+.task-status-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.task-status-badge.inbox { background: #1f3a5f; color: var(--accent); }
+.task-status-badge.active { background: #1a3a1a; color: var(--green); }
+.task-status-badge.waiting { background: #3a2f1a; color: var(--orange); }
+.task-project {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #272730;
+  color: var(--purple);
+  flex-shrink: 0;
+}
+
+/* Toggle */
+.toggle-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+.toggle-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  padding: 4px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Add task */
+.add-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.add-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+.add-input:focus { border-color: var(--accent); }
+.add-input::placeholder { color: var(--text2); }
+.add-btn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.add-btn:hover { opacity: 0.9; }
+
+/* Modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal h3 { margin-bottom: 16px; font-size: 18px; }
+.modal label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; margin-top: 12px; }
+.modal input, .modal select, .modal textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  font-family: inherit;
+}
+.modal input:focus, .modal select:focus, .modal textarea:focus { border-color: var(--accent); }
+.modal textarea { resize: vertical; min-height: 80px; }
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+  justify-content: space-between;
+}
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+.btn-save { background: var(--accent); color: #fff; }
+.btn-cancel { background: var(--border); color: var(--text); }
+.btn-delete { background: var(--red); color: #fff; }
+.btn:hover { opacity: 0.9; }
+
+.loading { color: var(--text2); font-size: 14px; padding: 12px; }
+</style>
+</head>
+<body>
+
+<div class="section">
+  <div class="add-bar">
+    <input class="add-input" id="addInput" placeholder="New task..." />
+    <button class="add-btn" onclick="addTask()">+</button>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Calendar</h2>
+  <div class="cal-grid" id="calGrid"></div>
+</div>
+
+<div class="section">
+  <h2>Today & Tomorrow</h2>
+  <div id="todayTasks"><div class="loading">Loading...</div></div>
+</div>
+
+<div class="section">
+  <div class="toggle-bar">
+    <h2 style="margin:0">All Tasks</h2>
+    <button class="toggle-btn active" id="btnActive" onclick="setFilter('active')">Active</button>
+    <button class="toggle-btn" id="btnAll" onclick="setFilter('all')">All</button>
+  </div>
+  <div id="allTasks"><div class="loading">Loading...</div></div>
+</div>
+
+<div class="section">
+  <div class="toggle-bar" onclick="toggleInbox()" style="cursor:pointer">
+    <h2 style="margin:0">Inbox <span id="inboxCount"></span></h2>
+    <span id="inboxArrow" style="color:var(--text2);font-size:12px">&#9654;</span>
+  </div>
+  <div id="inboxList" style="display:none"></div>
+</div>
+
+<div class="modal-overlay" id="modal" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>Edit Task</h3>
+    <input type="hidden" id="mTaskId" />
+    <label>Title</label>
+    <input type="text" id="mTitle" />
+    <label>Details</label>
+    <textarea id="mDetails"></textarea>
+    <label>Status</label>
+    <select id="mStatus">
+      <option value="inbox">Inbox</option>
+      <option value="active">Active</option>
+      <option value="waiting">Waiting</option>
+      <option value="done">Done</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+    <label>Project</label>
+    <select id="mProject"><option value="">—</option></select>
+    <label>Deadline</label>
+    <input type="date" id="mDeadline" />
+    <div class="modal-actions">
+      <button class="btn btn-delete" onclick="deleteTask()">Delete</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-cancel" onclick="document.getElementById('modal').classList.remove('open')">Cancel</button>
+        <button class="btn btn-save" onclick="saveTask()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOKEN = '__API_TOKEN__';
+const headers = TOKEN ? {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'} : {'Content-Type': 'application/json'};
+
+let allTasksData = [];
+let projects = [];
+let currentFilter = 'active';
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {headers, ...opts});
+  if (!res.ok) throw new Error(res.statusText);
+  return res.json();
+}
+
+// Calendar
+function localDateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const LABELS = ['Today','Tomorrow',''];
+
+let cache = null;
+let todayTomorrowIds = new Set();
+
+async function loadAll() {
+  cache = await api('/api/cache');
+  projects = cache.projects;
+  allTasksData = cache.tasks;
+  inboxItems = allTasksData.filter(t => t.status === 'inbox');
+  renderCalendar(cache.calendar_events);
+  renderToday(cache);
+  renderAllTasks();
+  renderInbox();
+}
+
+function renderCalendar(events) {
+  const grid = document.getElementById('calGrid');
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const calNames = [...new Set(events.map(e => e.calendar))];
+  let html = '';
+  for (let i = 0; i < 3; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    const ds = localDateStr(d);
+    const isToday = i === 0;
+    const label = LABELS[i] || DAY_NAMES[d.getDay()];
+    const dayEvents = events.filter(e => {
+      if (!e.start) return false;
+      const es = e.start.slice(0, 10);
+      if (e.all_day && e.end) {
+        const ee = e.end.slice(0, 10);
+        return ds >= es && ds < ee;
+      }
+      return es === ds;
+    });
+    html += `<div class="cal-day${isToday ? ' today' : ''}">`;
+    html += `<div class="cal-day-header">${label}, ${d.getDate()}.${String(d.getMonth()+1).padStart(2,'0')}</div>`;
+    dayEvents.forEach(e => {
+      const ci = calNames.indexOf(e.calendar);
+      const time = e.all_day ? '' : e.start.slice(11, 16) + ' ';
+      html += `<div class="cal-event" data-cal="${ci}" title="${esc(e.summary)}">${time}${esc(e.summary)}</div>`;
+    });
+    if (!dayEvents.length) html += '<div style="color:var(--text2);font-size:11px">—</div>';
+    html += '</div>';
+  }
+  grid.innerHTML = html;
+}
+
+function renderToday(data) {
+  const tomorrow = localDateStr((() => { const d = new Date(); d.setDate(d.getDate()+1); return d; })());
+  const dueTomorrow = allTasksData.filter(t => t.deadline === tomorrow && !['done','cancelled'].includes(t.status));
+  const el = document.getElementById('todayTasks');
+  const tasks = [...(data.overdue || []), ...(data.due_today || []), ...dueTomorrow];
+  todayTomorrowIds = new Set(tasks.map(t => t.id));
+  if (!tasks.length) {
+    el.innerHTML = '<div class="loading">No tasks due</div>';
+    return;
+  }
+  el.innerHTML = tasks.map(t => taskRow(t)).join('');
+}
+
+function renderAllTasks() {
+  const el = document.getElementById('allTasks');
+  let filtered = allTasksData.filter(t => !todayTomorrowIds.has(t.id));
+  if (currentFilter === 'active') {
+    filtered = filtered.filter(t => !['done','cancelled','waiting'].includes(t.status));
+  }
+  if (!filtered.length) {
+    el.innerHTML = '<div class="loading">No tasks</div>';
+    return;
+  }
+  el.innerHTML = filtered.map(t => taskRow(t)).join('');
+}
+
+function taskRow(t) {
+  const isDone = t.status === 'done' || t.status === 'cancelled';
+  let dlClass = '';
+  let dlText = '';
+  if (t.deadline) {
+    const today = localDateStr(new Date());
+    const tmrw = new Date(); tmrw.setDate(tmrw.getDate()+1);
+    const tomorrow = localDateStr(tmrw);
+    if (t.deadline < today) { dlClass = 'overdue'; dlText = t.deadline; }
+    else if (t.deadline === today) { dlClass = 'today'; dlText = 'today'; }
+    else if (t.deadline === tomorrow) { dlText = 'tomorrow'; }
+    else { dlText = t.deadline.slice(5); }
+  }
+  const statusBadge = (!isDone && t.status !== 'active') ? `<span class="task-status-badge ${t.status}">${t.status}</span>` : '';
+  const projectBadge = t.project_name ? `<span class="task-project">${esc(t.project_name)}</span>` : '';
+  return `<div class="task-row${isDone ? ' done' : ''}" data-id="${t.id}">
+    <div class="task-check${isDone ? ' checked' : ''}" onclick="event.stopPropagation();toggleDone(${t.id},'${t.status}')"></div>
+    <span class="task-title" onclick="openTask(${t.id})">${esc(t.title)}</span>
+    ${projectBadge}
+    ${statusBadge}
+    ${dlText ? `<span class="task-deadline ${dlClass}">${dlText}</span>` : ''}
+  </div>`;
+}
+
+// Toggle done/undone
+async function toggleDone(id, currentStatus) {
+  const newStatus = (currentStatus === 'done') ? 'active' : 'done';
+  // Optimistic UI: immediately show visual feedback
+  const row = document.querySelector(`.task-row[data-id="${id}"]`);
+  const check = row ? row.querySelector('.task-check') : null;
+  if (newStatus === 'done') {
+    if (row) row.classList.add('done');
+    if (check) check.classList.add('checked');
+  } else {
+    if (row) row.classList.remove('done');
+    if (check) check.classList.remove('checked');
+  }
+  try {
+    await api(`/tasks/${id}`, {method: 'PATCH', body: JSON.stringify({status: newStatus})});
+    // Brief delay so user sees the checkmark before row disappears
+    await new Promise(r => setTimeout(r, 350));
+    await reload();
+  } catch (e) {
+    console.error('toggleDone error:', e);
+    // Revert optimistic update on error
+    if (row) row.classList.toggle('done');
+    if (check) check.classList.toggle('checked');
+  }
+}
+
+// Inbox
+let inboxOpen = false;
+let inboxItems = [];
+
+function renderInbox() {
+  const el = document.getElementById('inboxList');
+  document.getElementById('inboxCount').textContent = inboxItems.length ? `(${inboxItems.length})` : '';
+  if (!inboxItems.length) {
+    el.innerHTML = '<div class="loading">Empty</div>';
+    return;
+  }
+  el.innerHTML = inboxItems.map(t => taskRow(t)).join('');
+}
+
+function toggleInbox() {
+  inboxOpen = !inboxOpen;
+  document.getElementById('inboxList').style.display = inboxOpen ? 'block' : 'none';
+  document.getElementById('inboxArrow').innerHTML = inboxOpen ? '&#9660;' : '&#9654;';
+}
+
+// Add task to inbox
+async function addTask() {
+  const input = document.getElementById('addInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  // Optimistic insert
+  const temp = {id: Date.now(), title: text, status: 'inbox', deadline: null, project_name: null, details: null};
+  inboxItems.unshift(temp);
+  renderInbox();
+  // Send to server, then refresh with real data
+  await api('/inbox', {method: 'POST', body: JSON.stringify({text})});
+  reload();
+}
+document.getElementById('addInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addTask();
+});
+
+// Modal
+async function openTask(id) {
+  const t = await api(`/tasks/${id}`);
+  document.getElementById('mTaskId').value = t.id;
+  document.getElementById('mTitle').value = t.title || '';
+  document.getElementById('mDetails').value = t.details || '';
+  document.getElementById('mStatus').value = t.status;
+  document.getElementById('mDeadline').value = t.deadline || '';
+
+  const projSelect = document.getElementById('mProject');
+  projSelect.innerHTML = '<option value="">—</option>' + projects.map(p =>
+    `<option value="${p.id}"${p.id === t.project_id ? ' selected' : ''}>${esc(p.name)}</option>`
+  ).join('');
+
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal(e) {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+}
+
+async function saveTask() {
+  const id = document.getElementById('mTaskId').value;
+  const body = {
+    title: document.getElementById('mTitle').value,
+    details: document.getElementById('mDetails').value || null,
+    status: document.getElementById('mStatus').value,
+    deadline: document.getElementById('mDeadline').value || null,
+    project_id: document.getElementById('mProject').value ? parseInt(document.getElementById('mProject').value) : null,
+  };
+  await api(`/tasks/${id}`, {method: 'PATCH', body: JSON.stringify(body)});
+  document.getElementById('modal').classList.remove('open');
+  reload();
+}
+
+async function deleteTask() {
+  const id = document.getElementById('mTaskId').value;
+  if (!confirm('Delete this task?')) return;
+  await api(`/tasks/${id}`, {method: 'DELETE'});
+  document.getElementById('modal').classList.remove('open');
+  reload();
+}
+
+// Filter
+function setFilter(f) {
+  currentFilter = f;
+  document.getElementById('btnActive').classList.toggle('active', f === 'active');
+  document.getElementById('btnAll').classList.toggle('active', f === 'all');
+  renderAllTasks();
+}
+
+// Helpers
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+async function reload() {
+  try {
+    await loadAll();
+  } catch (e) {
+    console.error('reload error:', e);
+  }
+}
+
+// Init
+loadAll();
+</script>
+</body>
+</html>
