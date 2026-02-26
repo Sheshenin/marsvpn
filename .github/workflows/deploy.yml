@@ -29,7 +29,7 @@ jobs:
 
             if [ -d "$REPO_DIR" ]; then
               cd "$REPO_DIR"
-              docker compose down --volumes 2>/dev/null || true
+              docker compose down 2>/dev/null || true
               # Remove docker-owned files via a container
               docker run --rm -v "$REPO_DIR":/workspace alpine rm -rf /workspace/.git /workspace/.claude 2>/dev/null || true
               cd "$HOME"
