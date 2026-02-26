@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tasks</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✅</text></svg>">
 <style>
 :root {
   --bg: #0d1117;
@@ -295,6 +296,8 @@ const headers = TOKEN ? {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'ap
 let allTasksData = [];
 let projects = [];
 let currentFilter = 'active';
+// Track tasks completed this session (id → previous status) so they stay visible until reload
+const doneThisSession = new Map();
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {headers, ...opts});
@@ -359,11 +362,20 @@ function renderCalendar(events) {
 }
 
 function renderToday(data) {
+  const today = localDateStr(new Date());
   const tomorrow = localDateStr((() => { const d = new Date(); d.setDate(d.getDate()+1); return d; })());
-  const dueTomorrow = allTasksData.filter(t => t.deadline === tomorrow && !['done','cancelled'].includes(t.status));
-  const el = document.getElementById('todayTasks');
-  const tasks = [...(data.overdue || []), ...(data.due_today || []), ...dueTomorrow];
+  // Build from local allTasksData so done-this-session tasks stay visible
+  const tasks = allTasksData.filter(t => {
+    if (!t.deadline) return false;
+    if (t.status === 'inbox') return false;
+    const isDone = t.status === 'done' || t.status === 'cancelled';
+    // Show if: overdue/today/tomorrow AND (not done OR done this session)
+    const inRange = t.deadline <= tomorrow;
+    return inRange && (!isDone || doneThisSession.has(t.id));
+  });
+  tasks.sort((a, b) => (a.deadline || '').localeCompare(b.deadline || ''));
   todayTomorrowIds = new Set(tasks.map(t => t.id));
+  const el = document.getElementById('todayTasks');
   if (!tasks.length) {
     el.innerHTML = '<div class="loading">No tasks due</div>';
     return;
@@ -373,9 +385,11 @@ function renderToday(data) {
 
 function renderAllTasks() {
   const el = document.getElementById('allTasks');
-  let filtered = allTasksData.filter(t => !todayTomorrowIds.has(t.id));
+  let filtered = allTasksData.filter(t => !todayTomorrowIds.has(t.id) && t.status !== 'inbox');
   if (currentFilter === 'active') {
-    filtered = filtered.filter(t => !['done','cancelled','waiting'].includes(t.status));
+    filtered = filtered.filter(t =>
+      !['done','cancelled','waiting'].includes(t.status) || doneThisSession.has(t.id)
+    );
   }
   if (!filtered.length) {
     el.innerHTML = '<div class="loading">No tasks</div>';
@@ -410,28 +424,41 @@ function taskRow(t) {
 
 // Toggle done/undone
 async function toggleDone(id, currentStatus) {
-  const newStatus = (currentStatus === 'done') ? 'active' : 'done';
-  // Optimistic UI: immediately show visual feedback
-  const row = document.querySelector(`.task-row[data-id="${id}"]`);
-  const check = row ? row.querySelector('.task-check') : null;
-  if (newStatus === 'done') {
-    if (row) row.classList.add('done');
-    if (check) check.classList.add('checked');
+  let newStatus;
+  if (currentStatus === 'done') {
+    // Undo: restore previous status from session map, or default to 'active'
+    newStatus = doneThisSession.get(id) || 'active';
+    doneThisSession.delete(id);
   } else {
-    if (row) row.classList.remove('done');
-    if (check) check.classList.remove('checked');
+    newStatus = 'done';
+    doneThisSession.set(id, currentStatus);
   }
+  // Update local data immediately
+  const task = allTasksData.find(t => t.id === id);
+  if (task) task.status = newStatus;
+  // Re-render in place (no full reload — task stays visible)
+  renderToday(cache);
+  renderAllTasks();
+  renderInbox();
+  // Sync to server in background
   try {
     await api(`/tasks/${id}`, {method: 'PATCH', body: JSON.stringify({status: newStatus})});
-    // Brief delay so user sees the checkmark before row disappears
-    await new Promise(r => setTimeout(r, 350));
-    await reload();
+    invalidateLocalCache();
   } catch (e) {
     console.error('toggleDone error:', e);
-    // Revert optimistic update on error
-    if (row) row.classList.toggle('done');
-    if (check) check.classList.toggle('checked');
+    // Revert on error
+    if (task) task.status = currentStatus;
+    if (newStatus === 'done') doneThisSession.delete(id);
+    else doneThisSession.set(id, currentStatus);
+    renderToday(cache);
+    renderAllTasks();
+    renderInbox();
   }
+}
+
+function invalidateLocalCache() {
+  // Next reload will fetch fresh data from server
+  cache = null;
 }
 
 // Inbox
