@@ -33,7 +33,7 @@
 - [x] Undo: повторный клик на done возвращает предыдущий статус
 
 ### CI/CD
-- [x] GitHub Actions — автодеплой при push
+- [x] GitHub Actions — автодеплой при push (**сейчас отключён**, см. ниже)
 - [x] SSH деплой на VPS
 - [x] Docker Compose оркестрация
 
@@ -77,7 +77,32 @@
 
 - MCP подключение из claude.ai сломано (см. выше)
 - Деплой удаляет папку и делает fresh clone — `.env` теряется при деплое
+- `git clone` падает если в директории остались docker-owned файлы (owned by root)
 - Календарь подгружается синхронно (может тормозить при медленных iCal-серверах)
+
+## CI/CD (GitHub Actions)
+
+**Статус: отключён** (2026-02-26)
+
+Workflow "Deploy to VPS" отключён вручную из-за проблемы с деплоем:
+деплой-скрипт не может удалить docker-owned файлы → `git clone` падает в непустую папку → сервер остаётся в сломанном состоянии.
+
+```bash
+# Включить обратно:
+gh workflow enable "Deploy to VPS" -R Sheshenin/marsvpn
+
+# Отключить:
+gh workflow disable "Deploy to VPS" -R Sheshenin/marsvpn
+
+# Проверить статус:
+gh workflow list -R Sheshenin/marsvpn
+```
+
+**Ручной деплой (пока Actions отключён):**
+```bash
+cd /home/deploy/app/marsvpn
+docker compose up -d --build
+```
 
 ## Changelog
 
@@ -86,6 +111,7 @@
 - Веб-интерфейс: задачи остаются видимы после нажатия done до перезагрузки (`doneThisSession`)
 - Undo done: повторный клик возвращает предыдущий статус задачи
 - Inbox-задачи исключены из раздела "All Tasks"
+- GitHub Actions "Deploy to VPS" отключён (проблема с docker-owned файлами при деплое)
 
 ### 2026-02-21
 - Добавлен OAuth 2.1 + PKCE (register, authorize, token endpoints)
