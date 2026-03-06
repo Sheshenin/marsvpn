@@ -101,7 +101,7 @@ tasks/
 - Vanilla JS, никаких фреймворков
 - Тёмная тема (GitHub-like)
 - Секции: быстрый ввод, календарь (3 дня), Today & Tomorrow, All Tasks, Inbox
-- Фильтры: Active / All
+- Фильтры: Active / All / Completed
 - Модальное окно редактирования задачи
 - Оптимистичный UI при toggle done
 

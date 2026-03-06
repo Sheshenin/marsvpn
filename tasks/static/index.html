@@ -247,6 +247,7 @@ h2 { font-size: 16px; color: var(--text2); margin-bottom: 8px; text-transform: u
     <h2 style="margin:0">All Tasks</h2>
     <button class="toggle-btn active" id="btnActive" onclick="setFilter('active')">Active</button>
     <button class="toggle-btn" id="btnAll" onclick="setFilter('all')">All</button>
+    <button class="toggle-btn" id="btnCompleted" onclick="setFilter('completed')">Completed</button>
   </div>
   <div id="allTasks"><div class="loading">Loading...</div></div>
 </div>
@@ -364,14 +365,14 @@ function renderCalendar(events) {
 function renderToday(data) {
   const today = localDateStr(new Date());
   const tomorrow = localDateStr((() => { const d = new Date(); d.setDate(d.getDate()+1); return d; })());
-  // Build from local allTasksData so done-this-session tasks stay visible
+  // Build from local allTasksData
   const tasks = allTasksData.filter(t => {
     if (!t.deadline) return false;
     if (t.status === 'inbox') return false;
     const isDone = t.status === 'done' || t.status === 'cancelled';
-    // Show if: overdue/today/tomorrow AND (not done OR done this session)
+    // Show if: overdue/today/tomorrow AND not done
     const inRange = t.deadline <= tomorrow;
-    return inRange && (!isDone || doneThisSession.has(t.id));
+    return inRange && !isDone;
   });
   tasks.sort((a, b) => (a.deadline || '').localeCompare(b.deadline || ''));
   todayTomorrowIds = new Set(tasks.map(t => t.id));
@@ -387,9 +388,11 @@ function renderAllTasks() {
   const el = document.getElementById('allTasks');
   let filtered = allTasksData.filter(t => !todayTomorrowIds.has(t.id) && t.status !== 'inbox');
   if (currentFilter === 'active') {
-    filtered = filtered.filter(t =>
-      !['done','cancelled','waiting'].includes(t.status) || doneThisSession.has(t.id)
-    );
+    filtered = filtered.filter(t => t.status === 'active');
+  } else if (currentFilter === 'all') {
+    filtered = filtered.filter(t => ['active','waiting'].includes(t.status));
+  } else if (currentFilter === 'completed') {
+    filtered = filtered.filter(t => ['done','cancelled'].includes(t.status));
   }
   if (!filtered.length) {
     el.innerHTML = '<div class="loading">No tasks</div>';
@@ -547,6 +550,7 @@ function setFilter(f) {
   currentFilter = f;
   document.getElementById('btnActive').classList.toggle('active', f === 'active');
   document.getElementById('btnAll').classList.toggle('active', f === 'all');
+  document.getElementById('btnCompleted').classList.toggle('active', f === 'completed');
   renderAllTasks();
 }
 
