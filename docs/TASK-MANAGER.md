@@ -149,25 +149,35 @@ tasks/
 
 Цель: вынести UI Task Manager на Vercel, оставить API/MCP и БД на сервере.
 
+### Текущая реализация frontend-mirror (2026-03-14)
+
+- Создан отдельный repo/frontend-контур: `/home/deploy/app/marsvpn-web`, GitHub `Sheshenin/marsvpn-web`, Vercel project `marsvpn-web`.
+- Первый production deploy доступен на `https://marsvpn-web-sigma.vercel.app`.
+- На текущем этапе используется pragmatic mirror-стратегия:
+  - `marsvpn-web` build step fetch'ит актуальный HTML с `https://tasks.sheshenin.com/`;
+  - результат сохраняется как `dist/index.html`;
+  - Vercel rewrites проксируют клиентские запросы обратно на серверный API.
+- Это позволяет быстро получить копию UI на Vercel без немедленного переписывания интерфейса на Next.js/React.
+
 1. Зафиксировать целевую архитектуру:
 - Frontend: Vercel (`*.vercel.app`) на этапе миграции.
 - Backend/API/MCP/SQLite: остаются в `tasks-api` на сервере.
 - Старый UI на `tasks.sheshenin.com` временно оставить как rollback.
 
-2. Исправить auth-модель перед выносом фронта:
-- Убрать зависимость от инъекции `__API_TOKEN__` в HTML.
-- Добавить пользовательский login-flow (session/JWT/cookie) для внешнего frontend.
-- `TASKS_API_TOKEN` оставить для server-to-server и админских вызовов.
+2. Оставить backend-контур без переработки:
+- Текущая схема осознанно не вводит отдельный login/session слой.
+- Mirror-frontend использует тот же HTML/API-контур, что и серверный UI.
+- MCP `/mcp` и текущий API остаются в том же режиме, что и сейчас.
 
 3. Подготовить backend для внешнего UI:
-- Ограничить CORS (вместо `*`) на production/preview origins.
-- Добавить стабильный агрегированный endpoint для frontend (`/snapshot` или расширенный `/api/cache` контракт).
 - Не менять контракт MCP `/mcp`.
+- Держать совместимым текущий `/api/cache`, так как mirror-frontend опирается на существующий HTML/JS.
+- При необходимости расширять rewrites, а не переписывать серверный UI с нуля.
 
 4. Подготовить frontend-контур:
-- Отдельный frontend-проект (желательно Next.js).
-- `NEXT_PUBLIC_API_URL` + same-origin `/api` через `rewrites` на серверный API.
-- Обработка 401/403/timeout с понятным UX (logout/retry/error state).
+- Отдельный frontend-проект `marsvpn-web` на Vercel.
+- Build step забирает актуальный HTML с `tasks.sheshenin.com`.
+- Same-origin `/api` и остальные маршруты проксируются через `rewrites` на серверный API.
 
 5. Миграция без простоя:
 - Этап A: deploy на `*.vercel.app`, внутреннее тестирование.

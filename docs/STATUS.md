@@ -89,6 +89,15 @@ TASKS_BASE_URL=https://tasks.sheshenin.com
 ## Changelog
 
 ### 2026-03-14
+- Создан отдельный frontend-репозиторий `marsvpn-web` для Vercel: `https://github.com/Sheshenin/marsvpn-web`.
+- Создан Vercel project `marsvpn-web` и локальная папка `/home/deploy/app/marsvpn-web` привязана к нему через `.vercel/project.json`.
+- Первый production deploy вынесенного UI опубликован на `https://marsvpn-web-sigma.vercel.app`.
+- Для быстрого выноса UI выбрана схема frontend-mirror:
+  - build step в `marsvpn-web` забирает текущее HTML `https://tasks.sheshenin.com/`;
+  - Vercel отдаёт этот HTML как standalone frontend;
+  - browser API calls проксируются обратно на сервер через Vercel rewrites (`/api`, `/tasks`, `/projects`, `/inbox`, `/calendar`, `/overview`).
+
+### 2026-03-14
 - Веб-интерфейс Task Manager перестроен:
   - верхний блок `Today & Tomorrow` заменён на `Все активные`;
   - активные задачи теперь группируются по проектам и сортируются по датам;
