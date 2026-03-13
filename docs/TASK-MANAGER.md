@@ -100,8 +100,9 @@ tasks/
 ### static/index.html — Веб-интерфейс (SPA)
 - Vanilla JS, никаких фреймворков
 - Тёмная тема (GitHub-like)
-- Секции: быстрый ввод, календарь (3 дня), Today & Tomorrow, All Tasks, Inbox
-- Фильтры: Active / All / Completed
+- Секции: быстрый ввод, календарь (3 дня), `Все активные`, `Ждём / Сделано`, Inbox
+- Верхний блок `Все активные`: только `active`, группировка по проектам, сортировка по deadline
+- Нижний блок `Ждём / Сделано`: два фильтра `waiting` и `done/cancelled`, без active-задач
 - Модальное окно редактирования задачи
 - Оптимистичный UI при toggle done
 
@@ -135,3 +136,41 @@ tasks/
 - Если токен не задан — API открыт (dev mode)
 - MCP endpoint `/mcp` — без аутентификации (публичный)
 - Токен подставляется в веб-интерфейс при рендере HTML
+
+## План переноса фронтенда (аналогично shopping-list)
+
+Цель: вынести UI Task Manager на Vercel, оставить API/MCP и БД на сервере.
+
+1. Зафиксировать целевую архитектуру:
+- Frontend: Vercel (`*.vercel.app`) на этапе миграции.
+- Backend/API/MCP/SQLite: остаются в `tasks-api` на сервере.
+- Старый UI на `tasks.sheshenin.com` временно оставить как rollback.
+
+2. Исправить auth-модель перед выносом фронта:
+- Убрать зависимость от инъекции `__API_TOKEN__` в HTML.
+- Добавить пользовательский login-flow (session/JWT/cookie) для внешнего frontend.
+- `TASKS_API_TOKEN` оставить для server-to-server и админских вызовов.
+
+3. Подготовить backend для внешнего UI:
+- Ограничить CORS (вместо `*`) на production/preview origins.
+- Добавить стабильный агрегированный endpoint для frontend (`/snapshot` или расширенный `/api/cache` контракт).
+- Не менять контракт MCP `/mcp`.
+
+4. Подготовить frontend-контур:
+- Отдельный frontend-проект (желательно Next.js).
+- `NEXT_PUBLIC_API_URL` + same-origin `/api` через `rewrites` на серверный API.
+- Обработка 401/403/timeout с понятным UX (logout/retry/error state).
+
+5. Миграция без простоя:
+- Этап A: deploy на `*.vercel.app`, внутреннее тестирование.
+- Этап B: dual-run (старый server UI + новый Vercel UI).
+- Этап C: после стабилизации перенос домена (по необходимости).
+
+6. Валидация перед переключением:
+- Проверить сценарии: inbox add, CRUD задач, complete/undo, projects, calendars, overview.
+- Добавить release marker и лёгкий API probe для диагностики кэша/версии.
+- Подготовить rollback: возврат на server UI за один шаг.
+
+7. Операционный порядок:
+- Документация (`STATUS.md`, `TASK-MANAGER.md`) обновляется до переключения трафика.
+- Деплой по текущему workflow: локально на сервере, затем git push.

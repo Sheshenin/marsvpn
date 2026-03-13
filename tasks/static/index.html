@@ -117,6 +117,16 @@ h2 { font-size: 16px; color: var(--text2); margin-bottom: 8px; text-transform: u
   color: var(--purple);
   flex-shrink: 0;
 }
+.project-group {
+  margin-bottom: 12px;
+}
+.project-group-title {
+  font-size: 12px;
+  color: var(--purple);
+  margin: 0 0 6px 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
 
 /* Toggle */
 .toggle-bar {
@@ -238,16 +248,15 @@ h2 { font-size: 16px; color: var(--text2); margin-bottom: 8px; text-transform: u
 </div>
 
 <div class="section">
-  <h2>Today & Tomorrow</h2>
+  <h2>Все активные</h2>
   <div id="todayTasks"><div class="loading">Loading...</div></div>
 </div>
 
 <div class="section">
   <div class="toggle-bar">
-    <h2 style="margin:0">All Tasks</h2>
-    <button class="toggle-btn active" id="btnActive" onclick="setFilter('active')">Active</button>
-    <button class="toggle-btn" id="btnAll" onclick="setFilter('all')">All</button>
-    <button class="toggle-btn" id="btnCompleted" onclick="setFilter('completed')">Completed</button>
+    <h2 style="margin:0">Ждём / Сделано</h2>
+    <button class="toggle-btn active" id="btnWaiting" onclick="setFilter('waiting')">Ждём</button>
+    <button class="toggle-btn" id="btnCompleted" onclick="setFilter('completed')">Сделано</button>
   </div>
   <div id="allTasks"><div class="loading">Loading...</div></div>
 </div>
@@ -296,7 +305,7 @@ const headers = TOKEN ? {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'ap
 
 let allTasksData = [];
 let projects = [];
-let currentFilter = 'active';
+let currentFilter = 'waiting';
 // Track tasks completed this session (id → previous status) so they stay visible until reload
 const doneThisSession = new Map();
 
@@ -315,7 +324,6 @@ const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const LABELS = ['Today','Tomorrow',''];
 
 let cache = null;
-let todayTomorrowIds = new Set();
 
 async function loadAll() {
   cache = await api('/api/cache');
@@ -326,6 +334,18 @@ async function loadAll() {
   renderToday(cache);
   renderAllTasks();
   renderInbox();
+}
+
+function deadlineSortValue(task) {
+  return task.deadline || '9999-12-31';
+}
+
+function sortTasksByDeadline(tasks) {
+  return [...tasks].sort((a, b) => {
+    const byDeadline = deadlineSortValue(a).localeCompare(deadlineSortValue(b));
+    if (byDeadline !== 0) return byDeadline;
+    return (a.created_at || '').localeCompare(b.created_at || '');
+  });
 }
 
 function renderCalendar(events) {
@@ -363,39 +383,44 @@ function renderCalendar(events) {
 }
 
 function renderToday(data) {
-  const today = localDateStr(new Date());
-  const tomorrow = localDateStr((() => { const d = new Date(); d.setDate(d.getDate()+1); return d; })());
-  // Build from local allTasksData
-  const tasks = allTasksData.filter(t => {
-    if (!t.deadline) return false;
-    if (t.status === 'inbox') return false;
-    const isDone = t.status === 'done' || t.status === 'cancelled';
-    // Show if: overdue/today/tomorrow AND not done
-    const inRange = t.deadline <= tomorrow;
-    return inRange && !isDone;
-  });
-  tasks.sort((a, b) => (a.deadline || '').localeCompare(b.deadline || ''));
-  todayTomorrowIds = new Set(tasks.map(t => t.id));
   const el = document.getElementById('todayTasks');
+  const tasks = sortTasksByDeadline(allTasksData.filter(t => t.status === 'active'));
   if (!tasks.length) {
-    el.innerHTML = '<div class="loading">No tasks due</div>';
+    el.innerHTML = '<div class="loading">Нет активных задач</div>';
     return;
   }
-  el.innerHTML = tasks.map(t => taskRow(t)).join('');
+  const grouped = new Map();
+  tasks.forEach(task => {
+    const key = task.project_name || 'Без проекта';
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(task);
+  });
+  const groups = [...grouped.entries()].sort((a, b) => {
+    const byDeadline = deadlineSortValue(a[1][0]).localeCompare(deadlineSortValue(b[1][0]));
+    if (byDeadline !== 0) return byDeadline;
+    return a[0].localeCompare(b[0], 'ru');
+  });
+  el.innerHTML = groups.map(([projectName, projectTasks]) => `
+    <div class="project-group">
+      <div class="project-group-title">${esc(projectName)}</div>
+      ${projectTasks.map(t => taskRow(t)).join('')}
+    </div>
+  `).join('');
 }
 
 function renderAllTasks() {
   const el = document.getElementById('allTasks');
-  let filtered = allTasksData.filter(t => !todayTomorrowIds.has(t.id) && t.status !== 'inbox');
-  if (currentFilter === 'active') {
-    filtered = filtered.filter(t => t.status === 'active');
-  } else if (currentFilter === 'all') {
-    filtered = filtered.filter(t => ['active','waiting'].includes(t.status));
+  let filtered = allTasksData.filter(t => t.status !== 'inbox');
+  if (currentFilter === 'waiting') {
+    filtered = filtered.filter(t => t.status === 'waiting');
   } else if (currentFilter === 'completed') {
     filtered = filtered.filter(t => ['done','cancelled'].includes(t.status));
+  } else {
+    filtered = [];
   }
+  filtered = sortTasksByDeadline(filtered);
   if (!filtered.length) {
-    el.innerHTML = '<div class="loading">No tasks</div>';
+    el.innerHTML = '<div class="loading">Нет задач</div>';
     return;
   }
   el.innerHTML = filtered.map(t => taskRow(t)).join('');
@@ -548,8 +573,7 @@ async function deleteTask() {
 // Filter
 function setFilter(f) {
   currentFilter = f;
-  document.getElementById('btnActive').classList.toggle('active', f === 'active');
-  document.getElementById('btnAll').classList.toggle('active', f === 'all');
+  document.getElementById('btnWaiting').classList.toggle('active', f === 'waiting');
   document.getElementById('btnCompleted').classList.toggle('active', f === 'completed');
   renderAllTasks();
 }
