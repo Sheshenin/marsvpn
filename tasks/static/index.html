@@ -98,8 +98,19 @@ h2 { font-size: 16px; color: var(--text2); margin-bottom: 8px; text-transform: u
 
 .task-title { flex: 1; font-size: 14px; }
 .task-deadline { font-size: 12px; color: var(--text2); flex-shrink: 0; }
+.task-deadline.clickable { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .task-deadline.overdue { color: var(--red); }
 .task-deadline.today { color: var(--orange); }
+.task-deadline-input {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  width: 132px;
+  flex-shrink: 0;
+}
 .task-status-badge {
   font-size: 10px;
   padding: 1px 6px;
@@ -109,12 +120,34 @@ h2 { font-size: 16px; color: var(--text2); margin-bottom: 8px; text-transform: u
 .task-status-badge.inbox { background: #1f3a5f; color: var(--accent); }
 .task-status-badge.active { background: #1a3a1a; color: var(--green); }
 .task-status-badge.waiting { background: #3a2f1a; color: var(--orange); }
+.task-status-badge.clickable { cursor: pointer; }
+.task-status-select {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+  max-width: 140px;
+  flex-shrink: 0;
+}
 .task-project {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 10px;
   background: #272730;
   color: var(--purple);
+  flex-shrink: 0;
+}
+.task-project.clickable { cursor: pointer; }
+.task-project-select {
+  background: var(--bg);
+  border: 1px solid var(--purple);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+  max-width: 180px;
   flex-shrink: 0;
 }
 .project-group {
@@ -306,8 +339,12 @@ const headers = TOKEN ? {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'ap
 let allTasksData = [];
 let projects = [];
 let currentFilter = 'waiting';
-// Track tasks completed this session (id → previous status) so they stay visible until reload
+let activeDeadlineEditTaskId = null;
+let activeProjectEditTaskId = null;
+let activeStatusEditTaskId = null;
+// Track recently completed tasks so they stay in place briefly for undo.
 const doneThisSession = new Map();
+const doneVisibilityTimers = new Map();
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {headers, ...opts});
@@ -348,6 +385,37 @@ function sortTasksByDeadline(tasks) {
   });
 }
 
+function sortCompletedTasks(tasks) {
+  return [...tasks].sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+}
+
+function getTransientDoneMeta(taskId) {
+  const meta = doneThisSession.get(taskId);
+  if (!meta) return null;
+  if (Date.now() > meta.expiresAt) {
+    doneThisSession.delete(taskId);
+    doneVisibilityTimers.delete(taskId);
+    return null;
+  }
+  return meta;
+}
+
+function isTransientlyVisibleInPreviousList(task) {
+  const meta = getTransientDoneMeta(task.id);
+  return !!meta && (task.status === 'done' || task.status === 'cancelled');
+}
+
+function scheduleDoneVisibilityExpiry(taskId) {
+  const existing = doneVisibilityTimers.get(taskId);
+  if (existing) clearTimeout(existing);
+  const timeoutId = setTimeout(() => {
+    doneThisSession.delete(taskId);
+    doneVisibilityTimers.delete(taskId);
+    rerenderTaskLists();
+  }, 15000);
+  doneVisibilityTimers.set(taskId, timeoutId);
+}
+
 function renderCalendar(events) {
   const grid = document.getElementById('calGrid');
   const today = new Date();
@@ -384,7 +452,7 @@ function renderCalendar(events) {
 
 function renderToday(data) {
   const el = document.getElementById('todayTasks');
-  const tasks = sortTasksByDeadline(allTasksData.filter(t => t.status === 'active'));
+  const tasks = sortTasksByDeadline(allTasksData.filter(t => t.status === 'active' || (isTransientlyVisibleInPreviousList(t) && getTransientDoneMeta(t.id)?.previousStatus === 'active')));
   if (!tasks.length) {
     el.innerHTML = '<div class="loading">Нет активных задач</div>';
     return;
@@ -412,13 +480,13 @@ function renderAllTasks() {
   const el = document.getElementById('allTasks');
   let filtered = allTasksData.filter(t => t.status !== 'inbox');
   if (currentFilter === 'waiting') {
-    filtered = filtered.filter(t => t.status === 'waiting');
+    filtered = filtered.filter(t => t.status === 'waiting' || (isTransientlyVisibleInPreviousList(t) && getTransientDoneMeta(t.id)?.previousStatus === 'waiting'));
   } else if (currentFilter === 'completed') {
-    filtered = filtered.filter(t => ['done','cancelled'].includes(t.status));
+    filtered = filtered.filter(t => ['done','cancelled'].includes(t.status) && !isTransientlyVisibleInPreviousList(t));
   } else {
     filtered = [];
   }
-  filtered = sortTasksByDeadline(filtered);
+  filtered = currentFilter === 'completed' ? sortCompletedTasks(filtered) : sortTasksByDeadline(filtered);
   if (!filtered.length) {
     el.innerHTML = '<div class="loading">Нет задач</div>';
     return;
@@ -430,6 +498,7 @@ function taskRow(t) {
   const isDone = t.status === 'done' || t.status === 'cancelled';
   let dlClass = '';
   let dlText = '';
+  const deadlineValue = t.deadline || '';
   if (t.deadline) {
     const today = localDateStr(new Date());
     const tmrw = new Date(); tmrw.setDate(tmrw.getDate()+1);
@@ -438,36 +507,220 @@ function taskRow(t) {
     else if (t.deadline === today) { dlClass = 'today'; dlText = 'today'; }
     else if (t.deadline === tomorrow) { dlText = 'tomorrow'; }
     else { dlText = t.deadline.slice(5); }
+  } else {
+    dlText = 'set date';
   }
-  const statusBadge = (!isDone && t.status !== 'active') ? `<span class="task-status-badge ${t.status}">${t.status}</span>` : '';
-  const projectBadge = t.project_name ? `<span class="task-project">${esc(t.project_name)}</span>` : '';
+  const isEditingStatus = activeStatusEditTaskId === t.id;
+  const statusOptions = ['inbox', 'active', 'waiting', 'done', 'cancelled']
+    .map(status => `<option value="${status}"${status === t.status ? ' selected' : ''}>${status}</option>`)
+    .join('');
+  let statusBadge = '';
+  if (isEditingStatus) {
+    statusBadge = `<select class="task-status-select" onmousedown="event.stopPropagation()" onclick="event.stopPropagation()" onchange="saveInlineStatus(${t.id}, this.value)" onblur="closeInlineStatusEditor()">${statusOptions}</select>`;
+  } else if (!isDone && (t.status === 'active' || t.status === 'waiting')) {
+    statusBadge = `<span class="task-status-badge clickable ${t.status}" onclick="event.stopPropagation();toggleActiveWaiting(${t.id},'${t.status}')">${t.status}</span>`;
+  } else if (t.status === 'inbox') {
+    statusBadge = `<span class="task-status-badge clickable inbox" onclick="event.stopPropagation();openInlineStatusEditor(${t.id})">inbox</span>`;
+  }
+  const isEditingProject = activeProjectEditTaskId === t.id;
+  const projectOptions = ['<option value="">Без проекта</option>'].concat(
+    projects.map(p => `<option value="${p.id}"${p.id === t.project_id ? ' selected' : ''}>${esc(p.name)}</option>`)
+  ).join('');
+  const projectBadge = isEditingProject
+    ? `<select class="task-project-select" onmousedown="event.stopPropagation()" onclick="event.stopPropagation()" onchange="saveInlineProject(${t.id}, this.value)" onblur="closeInlineProjectEditor()">${projectOptions}</select>`
+    : `<span class="task-project clickable" onclick="event.stopPropagation();openInlineProjectEditor(${t.id})">${esc(t.project_name || 'Без проекта')}</span>`;
+  const isEditingDeadline = activeDeadlineEditTaskId === t.id;
+  const deadlineControl = isEditingDeadline
+    ? `<input class="task-deadline-input" type="date" value="${deadlineValue}" onmousedown="event.stopPropagation()" onclick="event.stopPropagation()" onchange="saveInlineDeadline(${t.id}, this.value)" onblur="closeInlineDeadlineEditor()" />`
+    : (dlText ? `<span class="task-deadline clickable ${dlClass}" onclick="event.stopPropagation();openInlineDeadlineEditor(${t.id})">${dlText}</span>` : '');
   return `<div class="task-row${isDone ? ' done' : ''}" data-id="${t.id}">
-    <div class="task-check${isDone ? ' checked' : ''}" onclick="event.stopPropagation();toggleDone(${t.id},'${t.status}')"></div>
+    <div class="task-check${isDone ? ' checked' : ''}" onclick="toggleDone(event, ${t.id})"></div>
     <span class="task-title" onclick="openTask(${t.id})">${esc(t.title)}</span>
     ${projectBadge}
     ${statusBadge}
-    ${dlText ? `<span class="task-deadline ${dlClass}">${dlText}</span>` : ''}
+    ${deadlineControl}
   </div>`;
 }
 
-// Toggle done/undone
-async function toggleDone(id, currentStatus) {
-  let newStatus;
-  if (currentStatus === 'done') {
-    // Undo: restore previous status from session map, or default to 'active'
-    newStatus = doneThisSession.get(id) || 'active';
-    doneThisSession.delete(id);
-  } else {
-    newStatus = 'done';
-    doneThisSession.set(id, currentStatus);
-  }
-  // Update local data immediately
-  const task = allTasksData.find(t => t.id === id);
-  if (task) task.status = newStatus;
-  // Re-render in place (no full reload — task stays visible)
+function rerenderTaskLists() {
   renderToday(cache);
   renderAllTasks();
   renderInbox();
+}
+
+function focusInlineDeadlineInput(taskId) {
+  const input = document.querySelector(`.task-row[data-id="${taskId}"] .task-deadline-input`);
+  if (!input) return;
+  input.focus();
+  if (typeof input.showPicker === 'function') {
+    input.showPicker();
+  } else {
+    input.click();
+  }
+}
+
+function focusInlineProjectSelect(taskId) {
+  const select = document.querySelector(`.task-row[data-id="${taskId}"] .task-project-select`);
+  if (!select) return;
+  select.focus();
+  select.click();
+}
+
+function focusInlineStatusSelect(taskId) {
+  const select = document.querySelector(`.task-row[data-id="${taskId}"] .task-status-select`);
+  if (!select) return;
+  select.focus();
+  select.click();
+}
+
+function openInlineDeadlineEditor(taskId) {
+  activeDeadlineEditTaskId = taskId;
+  rerenderTaskLists();
+  setTimeout(() => focusInlineDeadlineInput(taskId), 0);
+}
+
+function closeInlineDeadlineEditor() {
+  if (activeDeadlineEditTaskId === null) return;
+  activeDeadlineEditTaskId = null;
+  rerenderTaskLists();
+}
+
+function openInlineProjectEditor(taskId) {
+  activeProjectEditTaskId = taskId;
+  rerenderTaskLists();
+  setTimeout(() => focusInlineProjectSelect(taskId), 0);
+}
+
+function closeInlineProjectEditor() {
+  if (activeProjectEditTaskId === null) return;
+  activeProjectEditTaskId = null;
+  rerenderTaskLists();
+}
+
+function openInlineStatusEditor(taskId) {
+  activeStatusEditTaskId = taskId;
+  rerenderTaskLists();
+  setTimeout(() => focusInlineStatusSelect(taskId), 0);
+}
+
+function closeInlineStatusEditor() {
+  if (activeStatusEditTaskId === null) return;
+  activeStatusEditTaskId = null;
+  rerenderTaskLists();
+}
+
+async function saveInlineDeadline(taskId, value) {
+  const deadline = value || null;
+  const task = allTasksData.find(t => t.id === taskId);
+  const previousDeadline = task ? task.deadline : null;
+  if (task) task.deadline = deadline;
+  activeDeadlineEditTaskId = null;
+  rerenderTaskLists();
+  try {
+    await api(`/tasks/${taskId}`, {method: 'PATCH', body: JSON.stringify({deadline})});
+    invalidateLocalCache();
+  } catch (e) {
+    console.error('deadline update error:', e);
+    if (task) task.deadline = previousDeadline;
+    rerenderTaskLists();
+  }
+}
+
+async function saveInlineProject(taskId, value) {
+  const projectId = value ? parseInt(value, 10) : null;
+  const task = allTasksData.find(t => t.id === taskId);
+  const previousProjectId = task ? task.project_id : null;
+  const previousProjectName = task ? task.project_name : null;
+  const selectedProject = projects.find(p => p.id === projectId) || null;
+  if (task) {
+    task.project_id = projectId;
+    task.project_name = selectedProject ? selectedProject.name : null;
+  }
+  activeProjectEditTaskId = null;
+  rerenderTaskLists();
+  try {
+    await api(`/tasks/${taskId}`, {method: 'PATCH', body: JSON.stringify({project_id: projectId})});
+    invalidateLocalCache();
+  } catch (e) {
+    console.error('project update error:', e);
+    if (task) {
+      task.project_id = previousProjectId;
+      task.project_name = previousProjectName;
+    }
+    rerenderTaskLists();
+  }
+}
+
+async function saveInlineStatus(taskId, value) {
+  const status = value || 'inbox';
+  const task = allTasksData.find(t => t.id === taskId);
+  const previousStatus = task ? task.status : null;
+  const previousUpdatedAt = task ? task.updated_at : null;
+  if (task) {
+    task.status = status;
+    task.updated_at = new Date().toISOString();
+  }
+  activeStatusEditTaskId = null;
+  rerenderTaskLists();
+  try {
+    await api(`/tasks/${taskId}`, {method: 'PATCH', body: JSON.stringify({status})});
+    invalidateLocalCache();
+  } catch (e) {
+    console.error('status update error:', e);
+    if (task) {
+      task.status = previousStatus;
+      task.updated_at = previousUpdatedAt;
+    }
+    rerenderTaskLists();
+  }
+}
+
+async function toggleActiveWaiting(id, currentStatus) {
+  if (!['active', 'waiting'].includes(currentStatus)) return;
+  const newStatus = currentStatus === 'active' ? 'waiting' : 'active';
+  const task = allTasksData.find(t => t.id === id);
+  if (task) task.status = newStatus;
+  rerenderTaskLists();
+  try {
+    await api(`/tasks/${id}`, {method: 'PATCH', body: JSON.stringify({status: newStatus})});
+    invalidateLocalCache();
+  } catch (e) {
+    console.error('active/waiting toggle error:', e);
+    if (task) task.status = currentStatus;
+    rerenderTaskLists();
+  }
+}
+
+// Toggle done/undone
+async function toggleDone(event, id) {
+  if (event) event.stopPropagation();
+  const currentTask = allTasksData.find(t => t.id === id);
+  if (!currentTask) return;
+  const currentStatus = currentTask.status;
+  const previousMeta = doneThisSession.get(id) ? {...doneThisSession.get(id)} : null;
+  const previousTimer = doneVisibilityTimers.get(id) || null;
+  let newStatus;
+  if (currentStatus === 'done') {
+    const meta = doneThisSession.get(id);
+    newStatus = meta?.previousStatus || 'active';
+    doneThisSession.delete(id);
+    const timeoutId = doneVisibilityTimers.get(id);
+    if (timeoutId) clearTimeout(timeoutId);
+    doneVisibilityTimers.delete(id);
+  } else {
+    newStatus = 'done';
+    doneThisSession.set(id, {previousStatus: currentStatus, expiresAt: Date.now() + 15000});
+    scheduleDoneVisibilityExpiry(id);
+  }
+  // Update local data immediately
+  const task = allTasksData.find(t => t.id === id);
+  const previousUpdatedAt = task ? task.updated_at : null;
+  if (task) {
+    task.status = newStatus;
+    task.updated_at = new Date().toISOString();
+  }
+  // Re-render in place (no full reload — task stays visible)
+  rerenderTaskLists();
   // Sync to server in background
   try {
     await api(`/tasks/${id}`, {method: 'PATCH', body: JSON.stringify({status: newStatus})});
@@ -475,12 +728,21 @@ async function toggleDone(id, currentStatus) {
   } catch (e) {
     console.error('toggleDone error:', e);
     // Revert on error
-    if (task) task.status = currentStatus;
-    if (newStatus === 'done') doneThisSession.delete(id);
-    else doneThisSession.set(id, currentStatus);
-    renderToday(cache);
-    renderAllTasks();
-    renderInbox();
+    if (task) {
+      task.status = currentStatus;
+      task.updated_at = previousUpdatedAt;
+    }
+    const timeoutId = doneVisibilityTimers.get(id);
+    if (timeoutId) clearTimeout(timeoutId);
+    doneVisibilityTimers.delete(id);
+    doneThisSession.delete(id);
+    if (previousMeta) {
+      doneThisSession.set(id, previousMeta);
+      if (previousTimer) {
+        scheduleDoneVisibilityExpiry(id);
+      }
+    }
+    rerenderTaskLists();
   }
 }
 
