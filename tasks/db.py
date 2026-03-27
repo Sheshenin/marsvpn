@@ -58,6 +58,16 @@ def create_project(name: str, description: str = None) -> int:
     return pid
 
 
+def get_project(project_id: int) -> dict | None:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM projects WHERE id = ?",
+        (project_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def list_projects() -> list[dict]:
     conn = get_connection()
     rows = conn.execute("SELECT * FROM projects ORDER BY name").fetchall()
@@ -65,11 +75,48 @@ def list_projects() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def delete_project(project_id: int):
+def update_project(project_id: int, **fields) -> bool:
+    allowed = {"name", "description"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return False
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [project_id]
+
     conn = get_connection()
+    cur = conn.execute(
+        f"UPDATE projects SET {set_clause} WHERE id = ?",
+        values,
+    )
+    conn.commit()
+    changed = cur.rowcount > 0
+    conn.close()
+    return changed
+
+
+def delete_project(project_id: int) -> dict | None:
+    conn = get_connection()
+    project = conn.execute(
+        "SELECT * FROM projects WHERE id = ?",
+        (project_id,),
+    ).fetchone()
+    if not project:
+        conn.close()
+        return None
+
+    moved_tasks = conn.execute(
+        """UPDATE tasks
+           SET project_id = NULL,
+               status = 'inbox',
+               updated_at = ?
+           WHERE project_id = ?""",
+        (datetime.now().isoformat(timespec="seconds"), project_id),
+    ).rowcount
     conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
     conn.commit()
     conn.close()
+    return {"id": project_id, "moved_tasks": moved_tasks, "name": project["name"]}
 
 
 # ── Tasks ─────────────────────────────────────────────────

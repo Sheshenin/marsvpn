@@ -154,6 +154,30 @@ TOOLS = [
         },
     },
     {
+        "name": "update_project",
+        "description": "Update an existing project's name and/or description.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "integer", "description": "Project ID to update"},
+                "name": {"type": "string", "description": "New project name"},
+                "description": {"type": "string", "description": "New project description"},
+            },
+            "required": ["project_id"],
+        },
+    },
+    {
+        "name": "delete_project",
+        "description": "Delete a project. Any tasks in that project are automatically moved to inbox.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "integer", "description": "Project ID to delete"},
+            },
+            "required": ["project_id"],
+        },
+    },
+    {
         "name": "daily_overview",
         "description": "Get a full daily overview: summary, overdue tasks, due today, inbox, active and waiting tasks, plus today's calendar events.",
         "inputSchema": {"type": "object", "properties": {}},
@@ -296,6 +320,20 @@ def call_tool(name: str, args: dict) -> str:
     elif name == "create_project":
         pid = db.create_project(args["name"], args.get("description"))
         return f"Created project #{pid}: {args['name']}"
+
+    elif name == "update_project":
+        project_id = args.pop("project_id")
+        ok = db.update_project(project_id, **args)
+        return f"Project #{project_id} updated." if ok else f"Project #{project_id} not found."
+
+    elif name == "delete_project":
+        result = db.delete_project(args["project_id"])
+        if not result:
+            return f"Project #{args['project_id']} not found."
+        return (
+            f"Project #{result['id']} deleted. "
+            f"Moved {result['moved_tasks']} task(s) to inbox."
+        )
 
     elif name == "daily_overview":
         calendar_events = _fetch_all_calendar_events(days_back=0, days_forward=1)

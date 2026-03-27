@@ -23,6 +23,8 @@
 - [x] Фавикон (emoji ✅, inline SVG)
 - [x] Задачи остаются видны после пометки done до перезагрузки страницы
 - [x] Undo: повторный клик на done возвращает предыдущий статус
+- [x] Edit/Delete проекта через API и MCP
+- [x] При удалении проекта его задачи автоматически переходят в inbox
 
 ### CI/CD
 - [x] GitHub Actions (**отключён**, см. ниже)
@@ -84,9 +86,13 @@ TASKS_BASE_URL=https://tasks.sheshenin.com
 
 ### Openclaw → MCP
 - mcporter: `https://tasks.sheshenin.com/mcp` (без auth, открытый)
-- 16 инструментов: inbox, tasks, projects, calendars, daily_overview
+- 18 инструментов: inbox, tasks, projects, calendars, daily_overview
 
 ## Changelog
+
+### 2026-03-14
+- Добавлены операции редактирования и удаления проекта в REST API и MCP.
+- Удаление проекта теперь безопасное: все связанные задачи автоматически переводятся в `inbox` и отвязываются от проекта.
 
 ### 2026-03-14
 - Создан отдельный frontend-репозиторий `marsvpn-web` для Vercel: `https://github.com/Sheshenin/marsvpn-web`.

@@ -129,6 +129,10 @@ class ProjectCreate(BaseModel):
     name: str
     description: str | None = None
 
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
 class CalendarCreate(BaseModel):
     name: str
     url: str
@@ -224,14 +228,28 @@ def get_projects(authorization: str = Header(None)):
 def create_project(project: ProjectCreate, authorization: str = Header(None)):
     verify_token(authorization)
     pid = db.create_project(project.name, project.description)
-    return {"id": pid, "name": project.name}
+    return db.get_project(pid)
+
+
+@app.patch("/projects/{project_id}")
+def update_project(project_id: int, updates: ProjectUpdate, authorization: str = Header(None)):
+    verify_token(authorization)
+    fields = {k: v for k, v in updates.model_dump().items() if v is not None}
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    ok = db.update_project(project_id, **fields)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return db.get_project(project_id)
 
 
 @app.delete("/projects/{project_id}")
 def delete_project(project_id: int, authorization: str = Header(None)):
     verify_token(authorization)
-    db.delete_project(project_id)
-    return {"deleted": project_id}
+    result = db.delete_project(project_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"deleted": project_id, "moved_to_inbox": result["moved_tasks"]}
 
 
 # ── Calendars ─────────────────────────────────────────────

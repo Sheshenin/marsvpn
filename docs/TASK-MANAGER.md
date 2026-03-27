@@ -70,10 +70,11 @@ tasks/
 - `init_db()` — CREATE IF NOT EXISTS при импорте
 - `backup_db()` — SQLite online backup после каждой мутации
 - CRUD: `add_task`, `get_task`, `list_tasks`, `update_task`, `complete_task`, `delete_task`
-- Projects: `create_project`, `list_projects`, `delete_project`
+- Projects: `create_project`, `get_project`, `list_projects`, `update_project`, `delete_project`
 - Calendars: `add_calendar`, `list_calendars`, `delete_calendar`
 - Queries: `overdue_tasks`, `tasks_due_today`, `task_summary`
 - DB path: env `TASKS_DB_PATH` (default: `tasks/tasks.db`)
+- При удалении проекта все его задачи автоматически переводятся в `inbox` и отвязываются от проекта (`project_id = NULL`)
 
 ### api.py — FastAPI application
 - **Middleware:** после каждого POST/PATCH/DELETE инвалидирует кэш и делает backup
@@ -84,7 +85,7 @@ tasks/
 - **POST `/mcp`** — MCP Streamable HTTP endpoint (без auth, публичный)
 
 ### mcp_server.py — MCP интеграция
-- `TOOLS` — список 15 MCP tools (inbox, tasks, projects, calendars, overview)
+- `TOOLS` — список 18 MCP tools (inbox, tasks, projects, calendars, overview)
 - `call_tool(name, args)` — диспетчер вызовов
 - `main()` — stdio MCP server (для Claude Code CLI)
 - Используется двумя путями:
@@ -130,7 +131,8 @@ tasks/
 | DELETE | /tasks/{id} | Bearer | Удалить задачу |
 | GET | /projects | Bearer | Список проектов |
 | POST | /projects | Bearer | Создать проект |
-| DELETE | /projects/{id} | Bearer | Удалить проект |
+| PATCH | /projects/{id} | Bearer | Обновить имя и/или описание проекта |
+| DELETE | /projects/{id} | Bearer | Удалить проект и перевести все его задачи в inbox |
 | GET | /calendars | Bearer | Список календарей |
 | POST | /calendars | Bearer | Добавить iCal календарь |
 | DELETE | /calendars/{id} | Bearer | Удалить календарь |
@@ -144,6 +146,12 @@ tasks/
 - Если токен не задан — API открыт (dev mode)
 - MCP endpoint `/mcp` — без аутентификации (публичный)
 - Токен подставляется в веб-интерфейс при рендере HTML
+
+## MCP инструменты для проектов
+
+- `create_project` — создаёт проект
+- `update_project` — редактирует имя и/или описание проекта
+- `delete_project` — удаляет проект и автоматически переносит все связанные задачи в `inbox`
 
 ## План переноса фронтенда (аналогично shopping-list)
 
